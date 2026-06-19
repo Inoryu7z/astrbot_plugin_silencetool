@@ -1,0 +1,14 @@
+{
+ "enable_silence": {
+  "description": "启用静默",
+  "hint": "关闭后插件不生效，工具调用前的中间文本将正常发送。",
+  "type": "bool",
+  "default": true
+ },
+ "enable_group_process": {
+  "description": "处理群聊",
+  "hint": "关闭后仅处理私聊中的工具调用。",
+  "type": "bool",
+  "default": true
+ }
+}

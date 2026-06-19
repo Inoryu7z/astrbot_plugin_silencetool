@@ -1,0 +1,6 @@
+name: astrbot_plugin_silencetool
+display_name: 静默工具
+version: 1.0.0
+description: 工具调用时静默中间文本
+author: Inoryu7z
+repo: https://github.com/Inoryu7z/astrbot_plugin_silencetool
