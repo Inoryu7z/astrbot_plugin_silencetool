@@ -22,7 +22,14 @@ class SilenceToolPlugin(Star):
     def _cfg(self, key: str, default=None):
         return self.config.get(key, default)
 
-    @filter.on_decorating_result(priority=-10**18)
+    # 优先级定位：必须晚于 group_chat_plus(0) 等"需要读取中间文本"的装饰器，
+    # 但早于 PostSplitter/ splitter(-1e17)、vits_pro(-100)、tts_plus(-1000) 等
+    # "会发送或转换中间文本"的装饰器。
+    # 原因：PostSplitter 会用 context.send_message 直接发送分段前缀（绕过本钩子），
+    # 必须在它之前清空 result.chain，让它看到空链提前返回。但又必须在 group_chat_plus
+    # 之后，因为 group_chat_plus 需要在 on_decorating_result 中读取链文本并累积到
+    # _pending_bot_replies（供 agent 完成后统一保存历史），若先于它清空会破坏该累积逻辑。
+    @filter.on_decorating_result(priority=-50)
     async def on_decorating_result(self, event: AstrMessageEvent):
         """在消息发送前拦截，抑制工具调用过程中的中间文本。"""
         if not self._cfg("enable_silence", True):
@@ -77,7 +84,14 @@ class SilenceToolPlugin(Star):
             final_resp = getattr(runner, "final_llm_resp", None)
 
         if final_resp is None:
-            # Agent 仍在运行，这是中间文本，清空消息链以抑制发送
-            # 重要：不调用 event.stop_event()，否则会终止整个 Agent 循环
+            # Agent 仍在运行，这是中间文本，清空消息链以抑制发送。
+            # 重要：不调用 event.stop_event()，否则会终止整个 Agent 循环。
+            # 本钩子优先级 -50：晚于 group_chat_plus(0)（已读取并累积中间文本），
+            # 早于 PostSplitter(-1e17) 等会直发分段前缀的装饰器，故清空后它们看到空链
+            # 会提前返回，从而彻底避免中间文本泄漏，且不破坏 group_chat_plus 的历史累积。
+            suppressed_len = sum(len(getattr(c, "text", "")) for c in result.chain)
             result.chain.clear()
-            logger.debug("[SilenceTool] 已抑制工具调用前的中间文本")
+            logger.info(
+                f"[SilenceTool] 已抑制中间文本（agent 仍在多轮工具调用中，"
+                f"被抑制内容约 {suppressed_len} 字符）"
+            )
